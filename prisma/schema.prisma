@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -30,16 +31,54 @@ enum MediaType {
   VIDEO
 }
 
-model User {
-  id         String   @id @default(cuid())
-  email      String   @unique
-  name       String?
-  image      String?
-  studentId  String?
-  faculty    String?
-  role       Role     @default(USER)
-  createdAt  DateTime @default(now())
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  studentId     String?
+  faculty       String?
+  role          Role      @default(USER)
+  createdAt     DateTime  @default(now())
+
+  accounts   Account[]
+  sessions   Session[]
   bookings   Booking[]
   complaints Complaint[]
   posts      Post[]
@@ -47,16 +86,16 @@ model User {
 }
 
 model Booking {
-  id            String        @id @default(cuid())
-  userId        String
-  user          User          @relation(fields: [userId], references: [id])
-  date          DateTime
-  startTime     String
-  endTime       String
-  status        BookingStatus @default(CONFIRMED)
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  date           DateTime
+  startTime      String
+  endTime        String
+  status         BookingStatus @default(CONFIRMED)
   photoBeforeUrl String?
   photoAfterUrl  String?
-  createdAt     DateTime      @default(now())
+  createdAt      DateTime      @default(now())
 }
 
 model Complaint {
@@ -72,15 +111,15 @@ model Complaint {
 }
 
 model Post {
-  id        String    @id @default(cuid())
+  id        String     @id @default(cuid())
   userId    String
-  user      User      @relation(fields: [userId], references: [id])
+  user      User       @relation(fields: [userId], references: [id])
   content   String
   mediaUrl  String?
   mediaType MediaType?
-  createdAt DateTime  @default(now())
+  createdAt DateTime   @default(now())
 
-  comments  Comment[]
+  comments Comment[]
 }
 
 model Comment {
