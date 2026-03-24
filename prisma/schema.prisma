@@ -117,6 +117,7 @@ model Post {
   content   String
   mediaUrl  String?
   mediaType MediaType?
+  isDeleted Boolean    @default(false)
   createdAt DateTime   @default(now())
 
   comments Comment[]
@@ -129,5 +130,6 @@ model Comment {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   content   String
+  isDeleted Boolean  @default(false)
   createdAt DateTime @default(now())
 }
