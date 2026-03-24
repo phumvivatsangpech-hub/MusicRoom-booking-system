@@ -29,6 +29,7 @@ enum ComplaintStatus {
 enum MediaType {
   IMAGE
   VIDEO
+  AUDIO
 }
 
 model Account {
@@ -143,6 +144,11 @@ model Comment {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   content   String
+  mediaUrl  String?
+  mediaType MediaType?
+  parentId  String?
+  parent    Comment?  @relation("CommentToComment", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[] @relation("CommentToComment")
   isDeleted Boolean  @default(false)
   createdAt DateTime @default(now())
 }

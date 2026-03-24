@@ -17,19 +17,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const body = await req.json();
-    const { content } = body;
+    const { content, parentId, mediaUrl, mediaType } = body;
 
-    if (!content) {
+    if (!content && !mediaUrl) {
       return NextResponse.json({ error: "Comment cannot be empty" }, { status: 400 });
     }
 
     const { id } = await params;
     
+    if (parentId) {
+      const parentComment = await prisma.comment.findUnique({ where: { id: parentId } });
+      if (!parentComment || parentComment.postId !== id) {
+        return NextResponse.json({ error: "Invalid parent comment" }, { status: 400 });
+      }
+    }
+
     const comment = await prisma.comment.create({
       data: {
         userId,
         postId: id,
-        content,
+        content: content || "",
+        ...(parentId && { parentId }),
+        ...(mediaUrl && { mediaUrl }),
+        ...(mediaType && { mediaType }),
       }
     });
 

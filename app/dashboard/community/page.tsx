@@ -21,7 +21,9 @@ export default function CommunityPage() {
 
   // New Comment State mapping postId -> content
   const [newComments, setNewComments] = useState<Record<string, string>>({});
+  const [newCommentMedia, setNewCommentMedia] = useState<Record<string, { url: string, type: string } | null>>({});
   const [showComments, setShowComments] = useState<Record<string, boolean>>({});
+  const [replyingTo, setReplyingTo] = useState<Record<string, string | null>>({}); // postId -> parentId
 
   // Edit State
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -91,22 +93,30 @@ export default function CommunityPage() {
     setIsPosting(false);
   };
 
-  const handleCreateComment = async (postId: string, e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateComment = async (postId: string, e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     const content = newComments[postId];
-    if (!content?.trim()) return;
+    const media = newCommentMedia[postId];
+    if (!content?.trim() && !media) return;
 
     try {
       const res = await fetch(`/api/posts/${postId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ 
+          content,
+          parentId: replyingTo[postId] || null,
+          mediaUrl: media?.url,
+          mediaType: media?.type
+        }),
       });
 
       if (res.ok) {
         setNewComments(prev => ({ ...prev, [postId]: "" }));
+        setNewCommentMedia(prev => ({ ...prev, [postId]: null }));
+        setReplyingTo(prev => ({ ...prev, [postId]: null }));
         setShowComments(prev => ({ ...prev, [postId]: true }));
-        fetchPosts(); // refreshing all posts is easiest for now
+        fetchPosts(); 
       }
     } catch (error) {
       console.error(error);
@@ -459,10 +469,10 @@ export default function CommunityPage() {
               {showComments[post.id] && (
               <div className="pt-2">
                 {post.comments?.length > 0 && (
-                  <div className="space-y-3 mb-4 bg-gray-50 p-4 rounded-xl">
-                    {post.comments.map((comment: any) => (
+                  <div className="space-y-4 mb-4 bg-gray-50/50 p-2 md:p-4 rounded-xl">
+                    {post.comments.filter((c: any) => !c.parentId).map((comment: any) => (
                       <div key={comment.id} className="flex gap-3">
-                        <Link href={`/dashboard/profile/${comment.userId}`} className="w-6 h-6 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 mt-1 overflow-hidden hover:ring-2 hover:ring-purple-300 transition">
+                        <Link href={`/dashboard/profile/${comment.userId}`} className="w-8 h-8 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 mt-1 overflow-hidden hover:ring-2 hover:ring-purple-300 transition">
                           {comment.user?.image ? (
                             <img src={comment.user.image} alt="Avatar" className="w-full h-full object-cover" />
                           ) : (
@@ -486,36 +496,89 @@ export default function CommunityPage() {
                             </div>
                           ) : (
                             <>
-                              <div className="bg-white px-3 py-2 rounded-2xl rounded-tl-none border border-gray-200 inline-block shadow-sm w-full md:w-auto">
+                              <div className="bg-white px-3 py-2 rounded-2xl rounded-tl-none border border-gray-100 shadow-sm inline-block">
                                 <Link href={`/dashboard/profile/${comment.userId}`}>
-                                  <span className="text-xs font-bold text-gray-700 block mb-0.5 hover:text-indigo-600 hover:underline">
+                                  <span className="text-sm font-bold text-gray-800 block mb-0.5 hover:underline">
                                     {comment.user?.name || comment.user?.email?.split('@')[0]}
                                   </span>
                                 </Link>
-                                <p className="text-sm text-gray-900">{comment.content}</p>
+                                {comment.content && <p className="text-sm text-gray-900 whitespace-pre-wrap">{comment.content}</p>}
+                                {comment.mediaUrl && (
+                                  <div className="mt-2 rounded-lg overflow-hidden border border-gray-100 max-w-sm">
+                                    {comment.mediaType === "VIDEO" ? (
+                                      <video src={comment.mediaUrl} controls className="w-full max-h-48 object-cover" />
+                                    ) : comment.mediaType === "AUDIO" ? (
+                                      <audio src={comment.mediaUrl} controls className="w-full max-w-[250px] h-10" />
+                                    ) : (
+                                      <img src={comment.mediaUrl} alt="Comment media" className="w-full max-h-48 object-cover" />
+                                    )}
+                                  </div>
+                                )}
                               </div>
                               <div className="flex items-center gap-3 mt-1 ml-2">
-                                <p className="text-[10px] text-gray-400">
+                                <p className="text-[11px] text-gray-500 font-medium">
                                   {new Date(comment.createdAt).toLocaleDateString('th-TH')}
                                 </p>
+                                <button 
+                                  onClick={() => setReplyingTo(prev => ({ ...prev, [post.id]: comment.id }))} 
+                                  className="text-[11px] font-bold text-gray-500 hover:text-indigo-600 transition"
+                                >
+                                  ตอบกลับ
+                                </button>
                                 {((session?.user as any)?.role === "ADMIN" || (session?.user as any)?.id === comment.userId) && (
                                   <>
                                     {(session?.user as any)?.id === comment.userId && (
-                                      <button 
-                                        onClick={() => {
-                                          setEditingCommentId(comment.id);
-                                          setEditCommentContent(comment.content);
-                                        }} 
-                                        className="text-[10px] text-gray-500 hover:underline"
-                                      >
-                                        แก้ไข
-                                      </button>
+                                      <button onClick={() => { setEditingCommentId(comment.id); setEditCommentContent(comment.content); }} className="text-[11px] font-bold text-gray-500 hover:text-indigo-600 transition">แก้ไข</button>
                                     )}
-                                    <button onClick={() => handleDeleteComment(post.id, comment.id)} className="text-[10px] text-red-500 hover:underline">ลบ</button>
+                                    <button onClick={() => handleDeleteComment(post.id, comment.id)} className="text-[11px] font-bold text-gray-500 hover:text-red-500 transition">ลบ</button>
                                   </>
                                 )}
                               </div>
                             </>
+                          )}
+                          
+                          {/* Replies */}
+                          {post.comments.filter((r: any) => r.parentId === comment.id).length > 0 && (
+                            <div className="mt-3 space-y-3 pl-2 sm:pl-4 border-l-2 border-gray-100">
+                              {post.comments.filter((r: any) => r.parentId === comment.id).map((reply: any) => (
+                                <div key={reply.id} className="flex gap-2">
+                                  <Link href={`/dashboard/profile/${reply.userId}`} className="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 mt-1 overflow-hidden hover:ring-2 hover:ring-indigo-300">
+                                    {reply.user?.image ? (
+                                      <img src={reply.user.image} alt="Avatar" className="w-full h-full object-cover" />
+                                    ) : (
+                                      reply.user?.name?.[0] || reply.user?.email?.[0]?.toUpperCase()
+                                    )}
+                                  </Link>
+                                  <div className="flex-1">
+                                    <div className="bg-white px-3 py-2 rounded-2xl rounded-tl-none border border-gray-100 shadow-sm inline-block">
+                                      <Link href={`/dashboard/profile/${reply.userId}`}>
+                                        <span className="text-xs font-bold text-gray-800 block hover:underline">
+                                          {reply.user?.name || reply.user?.email?.split('@')[0]}
+                                        </span>
+                                      </Link>
+                                      {reply.content && <p className="text-sm text-gray-900 whitespace-pre-wrap">{reply.content}</p>}
+                                      {reply.mediaUrl && (
+                                        <div className="mt-1 flex border border-gray-100 rounded-lg overflow-hidden max-w-64">
+                                          {reply.mediaType === "VIDEO" ? (
+                                            <video src={reply.mediaUrl} controls className="max-h-32 w-full object-cover" />
+                                          ) : reply.mediaType === "AUDIO" ? (
+                                            <audio src={reply.mediaUrl} controls className="w-full max-w-[200px] h-8" />
+                                          ) : (
+                                            <img src={reply.mediaUrl} className="max-h-32 w-full object-cover" />
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-3 mt-1 ml-2">
+                                      <p className="text-[10px] text-gray-500">{new Date(reply.createdAt).toLocaleDateString('th-TH')}</p>
+                                      {((session?.user as any)?.role === "ADMIN" || (session?.user as any)?.id === reply.userId) && (
+                                        <button onClick={() => handleDeleteComment(post.id, reply.id)} className="text-[10px] font-bold text-gray-400 hover:text-red-500">ลบ</button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -524,22 +587,79 @@ export default function CommunityPage() {
                 )}
 
                 {!(profile?.banUntil && new Date(profile.banUntil) > new Date()) ? (
-                  <form onSubmit={(e) => handleCreateComment(post.id, e)} className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="เขียนความคิดเห็น..."
-                      value={newComments[post.id] || ""}
-                      onChange={(e) => setNewComments({ ...newComments, [post.id]: e.target.value })}
-                      className="flex-1 bg-gray-50 border border-gray-300 text-gray-900 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                    />
-                    <button 
-                      type="submit" 
-                      disabled={!newComments[post.id]?.trim()}
-                      className="bg-indigo-600 text-white rounded-full px-4 py-2 text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 transition"
-                    >
-                      ส่ง
-                    </button>
-                  </form>
+                  <div className="flex flex-col gap-2">
+                    
+                    {/* Media Preview inside the comment block */}
+                    {newCommentMedia[post.id] && (
+                       <div className="relative inline-block border border-gray-200 rounded-lg overflow-hidden bg-gray-100 max-w-[200px]">
+                         <button 
+                           onClick={() => setNewCommentMedia(prev => ({ ...prev, [post.id]: null }))}
+                           className="absolute top-1 right-1 bg-gray-900/50 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] hover:bg-red-500 z-10"
+                         >✕</button>
+                         {newCommentMedia[post.id]?.type === "VIDEO" ? (
+                           <video src={newCommentMedia[post.id]!.url} className="max-h-24 w-full object-cover" />
+                         ) : newCommentMedia[post.id]?.type === "AUDIO" ? (
+                           <div className="p-2 text-xs font-bold text-indigo-600 flex items-center justify-center gap-2 h-16"><span className="text-lg">🎧</span> แนบไฟล์เสียงแล้ว</div>
+                         ) : (
+                           <img src={newCommentMedia[post.id]!.url} className="max-h-24 w-full object-cover" />
+                         )}
+                       </div>
+                    )}
+                    
+                    {replyingTo[post.id] && (
+                       <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 mb-1 ml-2">
+                         <span>กำลังตอบกลับความคิดเห็น...</span>
+                         <button onClick={() => setReplyingTo(prev => ({ ...prev, [post.id]: null }))} className="text-gray-400 hover:text-red-500">ยกเลิก</button>
+                       </div>
+                    )}
+
+                    <form onSubmit={(e) => handleCreateComment(post.id, e)} className="flex items-center gap-2">
+                       <CldUploadWidget 
+                         signatureEndpoint="/api/sign-image"
+                         onSuccess={(result: any) => {
+                           if (result.event !== "success") return;
+                           const rType = result.info.resource_type;
+                           // If format is mp3, wav, m4a etc. it might be recognized as video natively by Cloudinary, but we check format.
+                           const isAudio = rType === "video" && !result.info.format.match(/(mp4|webm|avi|mov)/i) && result.info.is_audio || rType === "raw" && result.info.format.match(/(mp3|wav|m4a|ogg)/i) || result.info.format?.match(/(mp3|wav|m4a|ogg)/i);
+                           
+                           setNewCommentMedia(prev => ({
+                             ...prev,
+                             [post.id]: {
+                               url: result.info.secure_url,
+                               type: isAudio ? "AUDIO" : rType === "video" ? "VIDEO" : "IMAGE"
+                             }
+                           }));
+                         }}
+                         options={{ sources: ['local', 'camera', 'url'], resourceType: 'auto' }}
+                       >
+                         {({ open }) => (
+                           <button 
+                             type="button" 
+                             onClick={() => open()} 
+                             className="text-gray-400 hover:text-indigo-600 w-10 h-10 flex items-center justify-center rounded-full hover:bg-indigo-50 transition flex-shrink-0"
+                             title="แนบรูปภาพ วิดีโอ หรือไฟล์เสียง"
+                           >
+                             <span className="text-xl">📎</span>
+                           </button>
+                         )}
+                       </CldUploadWidget>
+
+                      <input
+                        type="text"
+                        placeholder={replyingTo[post.id] ? "เขียนการตอบกลับ..." : "เขียนความคิดเห็น..."}
+                        value={newComments[post.id] || ""}
+                        onChange={(e) => setNewComments({ ...newComments, [post.id]: e.target.value })}
+                        className="flex-1 bg-gray-50 border border-gray-300 text-gray-900 rounded-2xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <button 
+                        type="submit" 
+                        disabled={!newComments[post.id]?.trim() && !newCommentMedia[post.id]}
+                        className="bg-indigo-600 text-white rounded-xl px-4 py-2 text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 transition"
+                      >
+                        ส่ง
+                      </button>
+                    </form>
+                  </div>
                 ) : (
                   <div className="text-center text-xs text-red-500 py-2">คุณถูกระงับสิทธิ์การคอมเมนต์</div>
                 )}
