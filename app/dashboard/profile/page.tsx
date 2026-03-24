@@ -18,6 +18,9 @@ export default function ProfileDashboardPage() {
   const [editPostContent, setEditPostContent] = useState("");
 
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  
+  const INSTRUMENTS = ["Vocal (ร้องนำ)", "Guitar (กีตาร์)", "Bass (เบส)", "Drum (กลอง)", "Keyboard (คีย์บอร์ด)", "Synthesizer (ซินธ์)", "Saxophone (แซกโซโฟน)", "อื่นๆ"];
+  const [selectedInstruments, setSelectedInstruments] = useState<string[]>([]);
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -47,6 +50,9 @@ export default function ProfileDashboardPage() {
         const profileData = await profileRes.json();
         if (profileData.image) {
           setProfileImage(profileData.image);
+        }
+        if (profileData.instruments) {
+          setSelectedInstruments(profileData.instruments);
         }
       }
     } catch (e) {
@@ -114,6 +120,26 @@ export default function ProfileDashboardPage() {
     }
   };
 
+  const toggleInstrument = async (inst: string) => {
+    let newInsts = [...selectedInstruments];
+    if (newInsts.includes(inst)) {
+      newInsts = newInsts.filter(i => i !== inst);
+    } else {
+      newInsts.push(inst);
+    }
+    setSelectedInstruments(newInsts);
+    
+    try {
+      await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruments: newInsts })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   if (status === "loading" || loading) {
     return <div className="p-8 text-center text-gray-500 min-h-screen flex items-center justify-center">Loading...</div>;
   }
@@ -147,12 +173,31 @@ export default function ProfileDashboardPage() {
             )}
           </CldUploadWidget>
         </div>
-        <div className="text-center md:text-left">
+        <div className="text-center md:text-left flex-1">
           <h1 className="text-3xl font-bold text-gray-800 mb-1">{session?.user?.name || "ไม่ระบุชื่อ"}</h1>
           <p className="text-gray-500 mb-2">{session?.user?.email}</p>
-          <span className="inline-block px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold">
+          <span className="inline-block px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold mb-4">
             {(session?.user as any)?.role === "ADMIN" ? "ผู้ดูแลระบบ" : "นักศึกษา/บุคลากร"}
           </span>
+
+          <div className="mt-2 w-full md:max-w-xl">
+            <p className="text-sm font-bold text-gray-700 mb-2">เครื่องดนตรีที่เล่น (คลิกเพื่อเลือก/ยกเลิก)</p>
+            <div className="flex flex-wrap gap-2 justify-center md:justify-start">
+              {INSTRUMENTS.map((inst) => (
+                <button
+                  key={inst}
+                  onClick={() => toggleInstrument(inst)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                    selectedInstruments.includes(inst) 
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                      : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                  }`}
+                >
+                  {inst}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 

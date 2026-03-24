@@ -14,8 +14,8 @@ export async function GET(req: Request) {
     const userId = (session.user as any).id;
 
     const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { image: true }
+      where: { id: (session.user as any).id },
+      select: { id: true, name: true, image: true, email: true, role: true, banUntil: true, banReason: true, instruments: true }
     });
 
     return NextResponse.json(user);
@@ -34,15 +34,19 @@ export async function PATCH(req: Request) {
     const userId = (session.user as any).id;
     
     const body = await req.json();
-    const { image } = body;
+    const { image, instruments } = body;
 
-    if (!image) {
-      return NextResponse.json({ error: "Image URL is required" }, { status: 400 });
+    const dataToUpdate: any = {};
+    if (image !== undefined) dataToUpdate.image = image;
+    if (instruments !== undefined) dataToUpdate.instruments = instruments;
+
+    if (Object.keys(dataToUpdate).length === 0) {
+      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
     const updatedUser = await prisma.user.update({
       where: { id: userId },
-      data: { image }
+      data: dataToUpdate
     });
 
     return NextResponse.json(updatedUser);

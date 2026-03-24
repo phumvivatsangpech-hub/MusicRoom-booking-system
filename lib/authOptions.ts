@@ -22,6 +22,10 @@ export const authOptions: AuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email) return null;
         
+        if (!credentials.email.endsWith("@go.buu.ac.th")) {
+          throw new Error("สงวนสิทธิ์การใช้งานสำหรับบุคลากรและนิสิตมหาวิทยาลัยบูรพา ต้องใช้อีเมล @go.buu.ac.th เท่านั้น");
+        }
+        
         let user = await prisma.user.findUnique({
           where: { email: credentials.email }
         });

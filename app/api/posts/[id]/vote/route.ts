@@ -10,32 +10,42 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const userId = (session.user as any).id;
+    const { id } = await params;
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (user?.banUntil && new Date(user.banUntil) > new Date()) {
-      return NextResponse.json({ error: `คุณถูกระงับสิทธิ์จนถึง ${new Date(user.banUntil).toLocaleString('th-TH')}` }, { status: 403 });
+      return NextResponse.json({ error: "คุณถูกระงับสิทธิ์" }, { status: 403 });
     }
 
     const body = await req.json();
-    const { content } = body;
+    const { pollOptionId } = body;
 
-    if (!content) {
-      return NextResponse.json({ error: "Comment cannot be empty" }, { status: 400 });
-    }
+    if (!pollOptionId) return NextResponse.json({ error: "Missing poll option" }, { status: 400 });
 
-    const { id } = await params;
-    
-    const comment = await prisma.comment.create({
-      data: {
-        userId,
-        postId: id,
-        content,
+    const existingVote = await prisma.pollVote.findUnique({
+      where: {
+        userId_postId: {
+          userId,
+          postId: id
+        }
       }
     });
 
-    return NextResponse.json(comment, { status: 201 });
+    if (existingVote) {
+      return NextResponse.json({ error: "You have already voted" }, { status: 400 });
+    }
+
+    const vote = await prisma.pollVote.create({
+      data: {
+        userId,
+        postId: id,
+        pollOptionId
+      }
+    });
+
+    return NextResponse.json(vote, { status: 201 });
   } catch (error) {
-    console.error("POST comment error:", error);
+    console.error("POST poll vote error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

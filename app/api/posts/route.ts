@@ -12,19 +12,43 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const isAdmin = (session.user as any)?.role === "ADMIN";
+    const userId = (session.user as any)?.id;
+
+    // We must fetch the actual user role from DB to be safe if session lacks it
+    const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+    const isActuallyAdmin = currentUser?.role === "ADMIN";
+
     const posts = await prisma.post.findMany({
-      where: { isDeleted: false },
+      where: { 
+        isDeleted: false,
+        ...(isActuallyAdmin ? {} : {
+          OR: [
+            { isApproved: true },
+            { userId }
+          ]
+        })
+      },
       include: {
-        user: { select: { name: true, image: true, email: true } },
+        user: { select: { id: true, name: true, image: true, email: true } },
         comments: {
           where: { isDeleted: false },
           include: {
-            user: { select: { name: true, image: true, email: true } }
+            user: { select: { id: true, name: true, image: true, email: true } }
           },
           orderBy: { createdAt: "asc" }
-        }
+        },
+        reports: true,
+        pollOptions: {
+          include: { _count: { select: { votes: true } } }
+        },
+        pollVotes: true,
+        likes: true
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [
+        { isPinned: "desc" },
+        { createdAt: "desc" }
+      ],
     });
 
     return NextResponse.json(posts);
@@ -42,10 +66,15 @@ export async function POST(req: Request) {
     }
     const userId = (session.user as any).id;
 
-    const body = await req.json();
-    const { content, mediaUrl, mediaType } = body;
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (user?.banUntil && new Date(user.banUntil) > new Date()) {
+      return NextResponse.json({ error: `คุณถูกระงับสิทธิ์จนถึง ${new Date(user.banUntil).toLocaleString('th-TH')}` }, { status: 403 });
+    }
 
-    if (!content && !mediaUrl) {
+    const body = await req.json();
+    const { content, mediaUrl, mediaType, isPoll, pollOptions } = body;
+
+    if (!content && !mediaUrl && !isPoll) {
       return NextResponse.json({ error: "Post cannot be empty" }, { status: 400 });
     }
 
@@ -55,6 +84,13 @@ export async function POST(req: Request) {
         content: content || "",
         ...(mediaUrl && { mediaUrl }),
         ...(mediaType && { mediaType }),
+        isPoll: isPoll || false,
+        isApproved: user?.role === "ADMIN" ? true : !(isPoll),
+        ...(isPoll && pollOptions?.length > 0 && {
+          pollOptions: {
+            create: pollOptions.map((text: string) => ({ text }))
+          }
+        })
       }
     });
 

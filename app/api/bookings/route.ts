@@ -33,7 +33,7 @@ export async function GET(req: Request) {
     const bookings = await prisma.booking.findMany({
       where: whereClause,
       include: {
-        user: { select: { name: true, email: true, studentId: true, faculty: true } },
+        user: { select: { name: true, email: true, studentId: true, faculty: true, image: true } },
       },
       orderBy: { startTime: "asc" },
     });
@@ -115,6 +115,31 @@ export async function POST(req: Request) {
 
     if (overlaps.length > 0) {
       return NextResponse.json({ error: "เวลานี้มีคนจองไปแล้ว กรุณาเลือกเวลาอื่น" }, { status: 400 });
+    }
+
+    // 4. Check Room Closures
+    const closures = await prisma.calendarEvent.findMany({
+      where: {
+        date: {
+          gte: requestedDate,
+          lt: nextDate,
+        },
+        type: "CLOSURE",
+      }
+    });
+
+    const hasClashingClosure = closures.some((closure: any) => {
+      // If no start/end time, it's an all-day closure
+      if (!closure.startTime || !closure.endTime) return true;
+      
+      // otherwise, check time overlap
+      const cStart = parseInt(closure.startTime.split(":")[0], 10);
+      const cEnd = parseInt(closure.endTime.split(":")[0], 10);
+      return startHour < cEnd && endHour > cStart;
+    });
+
+    if (hasClashingClosure) {
+      return NextResponse.json({ error: "ห้องซ้อมถูกปิดใช้งานในเวลาที่ท่านเลือก กรุณาตรวจสอบประกาศหรือเลือกเวลาอื่น" }, { status: 400 });
     }
 
     // Update user profile if faculty/studentId is provided

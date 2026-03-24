@@ -13,6 +13,9 @@ export default function AdminDashboardPage() {
   const [complaints, setComplaints] = useState<any[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
 
+  // State for toggling report details
+  const [viewingReportPostId, setViewingReportPostId] = useState<string | null>(null);
+
   useEffect(() => {
     if (status === "authenticated" && (session?.user as any)?.role === "ADMIN") {
       fetchBookings();
@@ -56,6 +59,65 @@ export default function AdminDashboardPage() {
     if (!confirm("ต้องการลบโพสต์นี้ใช่หรือไม่?")) return;
     await fetch(`/api/posts/${id}`, { method: "DELETE" });
     fetchPosts();
+  };
+
+  const approvePoll = async (id: string) => {
+    if (!confirm("ต้องการอนุมัติโพลล์นี้ให้แสดงในชุมชนใช่หรือไม่?")) return;
+    try {
+      const res = await fetch(`/api/posts/${id}/approve`, { method: "PATCH" });
+      if (res.ok) fetchPosts();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const togglePinStatus = async (id: string, currentStatus: boolean) => {
+    try {
+      const res = await fetch(`/api/posts/${id}/pin`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPinned: !currentStatus })
+      });
+      if (res.ok) fetchPosts();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleBanUser = async (userId: string) => {
+    if (!userId) {
+      alert("ไม่พบ ID ผู้ใช้งาน");
+      return;
+    }
+    const daysRaw = prompt("แบนผู้ใช้นี้กี่วัน? (พิมพ์ 999 ใหัแบนถาวร)");
+    if (!daysRaw) return;
+    const days = parseInt(daysRaw, 10);
+    if (isNaN(days) || days <= 0) return;
+    
+    const reason = prompt("เหตุผลในการแบน (ข้อความนี้จะแสดงให้ผู้ใช้เห็น):");
+    
+    const banUntil = new Date();
+    if (days >= 999) {
+      banUntil.setFullYear(2099);
+    } else {
+      banUntil.setDate(banUntil.getDate() + days);
+    }
+
+    try {
+      const res = await fetch(`/api/users/${userId}/ban`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ banUntil: banUntil.toISOString(), banReason: reason || "ละเมิดกฎของชุมชน" })
+      });
+      if (res.ok) {
+        alert("แบนผู้ใช้สำเร็จ");
+        fetchPosts();
+      } else {
+        alert("เกิดข้อผิดพลาดในการแบน");
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   if (status === "loading") return <p className="text-center mt-20">Loading...</p>;
@@ -201,13 +263,22 @@ export default function AdminDashboardPage() {
                     <div className="text-xs text-gray-500">{b.startTime} - {b.endTime}</div>
                   </td>
                   <td className="p-4">
-                    <div>{b.user?.email}</div>
-                    <div className="text-xs text-gray-500">{b.user?.name || "ไม่ระบุชื่อ"}</div>
-                    {(b.user?.studentId || b.user?.faculty) && (
-                      <div className="text-xs text-indigo-500 mt-1 font-medium">
-                        รหัสนิสิต: {b.user?.studentId || "-"} {b.user?.faculty ? `คณะ: ${b.user?.faculty}` : ''}
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 border border-indigo-200 overflow-hidden">
+                        {b.user?.image ? (
+                          <img src={b.user.image} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          b.user?.name?.[0] || b.user?.email?.[0]?.toUpperCase()
+                        )}
                       </div>
-                    )}
+                      <div>
+                        <p className="font-medium text-gray-800">{b.user?.email}</p>
+                        <p className="text-gray-500 text-sm">{b.user?.name}</p>
+                        <p className="text-indigo-600 text-xs mt-1">
+                          รหัสนิสิต: {b.user?.studentId || '-'} คณะ: {b.user?.faculty || '-'}
+                        </p>
+                      </div>
+                    </div>
                   </td>
                   <td className="p-4 font-medium">
                     <span className={`px-2 py-1 rounded-full text-xs ${b.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : b.status === 'IN_USE' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
@@ -294,8 +365,38 @@ export default function AdminDashboardPage() {
             <div key={p.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="flex bg-gray-50 px-3 py-1 rounded-full text-xs font-medium text-gray-500 w-fit mb-3">
-                    {p.user?.email} • {new Date(p.createdAt).toLocaleString('th-TH')}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex bg-gray-50 px-3 py-1 rounded-full text-xs font-medium text-gray-500 w-fit">
+                      {p.user?.email} • {new Date(p.createdAt).toLocaleString('th-TH')}
+                    </div>
+                    {p.reports && p.reports.length > 0 && (
+                      <div className="relative">
+                        <button 
+                          onClick={() => setViewingReportPostId(viewingReportPostId === p.id ? null : p.id)}
+                          className={`text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1 cursor-pointer transition border ${
+                            viewingReportPostId === p.id ? 'bg-red-200 text-red-800 border-red-300' : 'bg-red-50 text-red-700 border-red-100 hover:bg-red-100 hover:border-red-200'
+                          }`}
+                        >
+                          🚩 ถูกรายงาน {p.reports.length} ครั้ง
+                        </button>
+                        
+                        {viewingReportPostId === p.id && (
+                          <div className="absolute top-full mt-2 left-0 w-72 bg-white border border-red-200 rounded-2xl shadow-xl z-50 p-4 flex flex-col gap-2">
+                            <div className="flex justify-between items-center mb-1 border-b border-gray-100 pb-2">
+                              <span className="font-bold text-gray-800 text-sm flex items-center gap-2"><span className="text-red-500">🚩</span> รายละเอียดการรายงาน</span>
+                              <button onClick={() => setViewingReportPostId(null)} className="text-gray-400 hover:text-gray-800 transition w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 text-xs">✕</button>
+                            </div>
+                            <ul className="max-h-48 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                              {p.reports.map((r: any, idx: number) => (
+                                <li key={r.id || idx} className="text-sm bg-red-50/50 p-3 rounded-xl text-gray-800 border border-red-100/50 shadow-sm leading-relaxed">
+                                  {r.reason}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <p className="text-gray-800 text-lg mb-4 whitespace-pre-wrap">{p.content}</p>
                   
@@ -307,12 +408,34 @@ export default function AdminDashboardPage() {
                   )}
                 </div>
                 
-                <button 
-                  onClick={() => deletePost(p.id)}
-                  className="bg-red-50 text-red-600 hover:bg-red-500 hover:text-white px-4 py-2 rounded-lg font-bold transition flex-shrink-0 ml-4 border border-red-200 text-sm"
-                >
-                  ลบโพสต์นี้
-                </button>
+                <div className="flex flex-col gap-2 ml-4 flex-shrink-0">
+                  {p.isPoll && !p.isApproved && (
+                    <button 
+                      onClick={() => approvePoll(p.id)}
+                      className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-4 py-2 rounded-lg font-bold transition border border-emerald-200 text-sm mb-2 shadow-sm"
+                    >
+                      ✅ อนุมัติโพลล์
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => togglePinStatus(p.id, p.isPinned)}
+                    className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-4 py-2 rounded-lg font-bold transition border border-indigo-200 text-sm"
+                  >
+                    {p.isPinned ? "เลิกปักหมุด" : "📌 ปักหมุดโพสต์"}
+                  </button>
+                  <button 
+                    onClick={() => deletePost(p.id)}
+                    className="bg-red-50 text-red-600 hover:bg-red-500 hover:text-white px-4 py-2 rounded-lg font-bold transition border border-red-200 text-sm"
+                  >
+                    ลบโพสต์นี้
+                  </button>
+                  <button 
+                    onClick={() => handleBanUser(p.user?.id)}
+                    className="bg-gray-800 text-white hover:bg-black px-4 py-2 rounded-lg font-bold transition text-sm"
+                  >
+                    แบนผู้ใช้
+                  </button>
+                </div>
               </div>
 
               {/* COMMENTS SECTION (Read-only for Admin to review) */}

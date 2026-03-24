@@ -11,6 +11,7 @@ export default function ComplaintsPage() {
 
   // Form states
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
@@ -59,6 +60,17 @@ export default function ComplaintsPage() {
     setIsSubmitting(false);
   };
 
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("ต้องการลบเรื่องร้องเรียนนี้ใช่หรือไม่?")) return;
+    try {
+      const res = await fetch(`/api/complaints/${id}`, { method: "DELETE" });
+      if (res.ok) fetchComplaints();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   if (status === "loading") return <div className="p-8 text-center text-gray-500 min-h-screen flex items-center justify-center">Loading...</div>;
 
   return (
@@ -86,36 +98,61 @@ export default function ComplaintsPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {complaints.map(c => (
-            <div key={c.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-6">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-lg font-bold text-gray-800">{c.title}</h3>
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                    c.status === "PENDING" ? "bg-amber-100 text-amber-700" :
-                    c.status === "IN_PROGRESS" ? "bg-blue-100 text-blue-700" :
-                    "bg-green-100 text-green-700"
-                  }`}>
-                    {c.status === "PENDING" ? "รอดำเนินการ" : c.status === "IN_PROGRESS" ? "กำลังดำเนินแก้ไข" : "เสร็จสิ้น"}
-                  </span>
+          {complaints.map(c => {
+            const isExpanded = expandedId === c.id;
+            return (
+              <div key={c.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col transition-all">
+                <div 
+                  className="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 rounded-2xl"
+                  onClick={() => setExpandedId(isExpanded ? null : c.id)}
+                >
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-lg font-bold text-gray-800">{c.title}</h3>
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                      c.status === "PENDING" ? "bg-amber-100 text-amber-700" :
+                      c.status === "IN_PROGRESS" ? "bg-blue-100 text-blue-700" :
+                      "bg-green-100 text-green-700"
+                    }`}>
+                      {c.status === "PENDING" ? "รอดำเนินการ" : c.status === "IN_PROGRESS" ? "กำลังดำเนินการแก้ไข" : "เสร็จสิ้น"}
+                    </span>
+                  </div>
+                  <div className="text-gray-400 font-bold text-sm">
+                    {isExpanded ? "▲ ซ่อน" : "▼ ดูรายละเอียด"}
+                  </div>
                 </div>
-                <p className="text-gray-600 text-sm whitespace-pre-wrap">{c.content}</p>
-                <p className="text-xs text-gray-400 mt-4">แจ้งเมื่อ: {new Date(c.createdAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}</p>
-                
-                {c.adminNote && (
-                  <div className="mt-4 bg-gray-50 border-l-4 border-indigo-400 p-3 rounded-r-lg">
-                    <p className="text-xs font-bold text-indigo-800 mb-1">ตอบกลับจากผู้ดูแล:</p>
-                    <p className="text-sm text-gray-700">{c.adminNote}</p>
+
+                {isExpanded && (
+                  <div className="px-6 pb-6 pt-2 border-t border-gray-100 flex flex-col md:flex-row gap-6 animate-in slide-in-from-top-2">
+                    <div className="flex-1">
+                      <p className="text-gray-600 text-sm whitespace-pre-wrap">{c.content}</p>
+                      <p className="text-xs text-gray-400 mt-4">แจ้งเมื่อ: {new Date(c.createdAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                      
+                      {c.adminNote && (
+                        <div className="mt-4 bg-gray-50 border-l-4 border-indigo-400 p-3 rounded-r-lg">
+                          <p className="text-xs font-bold text-indigo-800 mb-1">ตอบกลับจากผู้ดูแล:</p>
+                          <p className="text-sm text-gray-700">{c.adminNote}</p>
+                        </div>
+                      )}
+
+                      {(session?.user as any)?.role === "ADMIN" && (
+                        <button 
+                          onClick={(e) => handleDelete(c.id, e)}
+                          className="mt-6 px-4 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs rounded-lg transition"
+                        >
+                          ลบเรื่องร้องเรียน
+                        </button>
+                      )}
+                    </div>
+                    {c.photoUrl && (
+                      <div className="w-full md:w-48 h-48 flex-shrink-0 mt-4 md:mt-0">
+                        <img src={c.photoUrl} alt="Complaint" className="w-full h-full object-cover rounded-xl border border-gray-200" />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-              {c.photoUrl && (
-                <div className="w-full md:w-32 h-32 flex-shrink-0">
-                  <img src={c.photoUrl} alt="Complaint" className="w-full h-full object-cover rounded-xl border border-gray-200" />
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
