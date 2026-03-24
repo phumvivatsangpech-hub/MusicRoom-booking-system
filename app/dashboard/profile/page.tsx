@@ -3,6 +3,7 @@
 import { useSession } from "next-auth/react";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { CldUploadWidget } from "next-cloudinary";
 
 export default function ProfileDashboardPage() {
   const { data: session, status } = useSession();
@@ -16,6 +17,8 @@ export default function ProfileDashboardPage() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editPostContent, setEditPostContent] = useState("");
 
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+
   useEffect(() => {
     if (status === "authenticated") {
       fetchMyData();
@@ -25,9 +28,10 @@ export default function ProfileDashboardPage() {
   const fetchMyData = async () => {
     setLoading(true);
     try {
-      const [bookingsRes, postsRes] = await Promise.all([
-        fetch("/api/bookings?all=true"), // Fetch all to include everything, we'll filter client side
-        fetch("/api/posts")
+      const [bookingsRes, postsRes, profileRes] = await Promise.all([
+        fetch("/api/bookings?all=true", { cache: "no-store" }),
+        fetch("/api/posts", { cache: "no-store" }),
+        fetch("/api/profile", { cache: "no-store" })
       ]);
 
       if (bookingsRes.ok && postsRes.ok) {
@@ -37,6 +41,13 @@ export default function ProfileDashboardPage() {
         const myUserId = (session?.user as any)?.id;
         setBookings(allBookings.filter((b: any) => b.userId === myUserId));
         setPosts(allPosts.filter((p: any) => p.userId === myUserId));
+      }
+      
+      if (profileRes.ok) {
+        const profileData = await profileRes.json();
+        if (profileData.image) {
+          setProfileImage(profileData.image);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -85,15 +96,68 @@ export default function ProfileDashboardPage() {
     }
   };
 
+  const handleUploadAvatar = async (result: any) => {
+    if (result.event !== "success") return;
+    const imageUrl = result.info.secure_url;
+    setProfileImage(imageUrl); // Optimistically update UI
+    try {
+      await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: imageUrl })
+      });
+      // window.location.reload(); removed so we don't jarringly refresh
+    } catch (e) {
+      console.error(e);
+      // rollback if failed
+      setProfileImage(session?.user?.image as string || null);
+    }
+  };
+
   if (status === "loading" || loading) {
     return <div className="p-8 text-center text-gray-500 min-h-screen flex items-center justify-center">Loading...</div>;
   }
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">👤 โปรไฟล์ของฉัน</h1>
-        <p className="text-gray-500 mt-2">จัดการประวัติการจองและโพสต์ส่วนตัวของคุณ</p>
+      
+      {/* PROFILE HEADER */}
+      <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-100 mb-8 flex flex-col md:flex-row items-center gap-6">
+        <div className="relative group">
+          <div className="w-24 h-24 md:w-32 md:h-32 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-4xl overflow-hidden border-4 border-white shadow-md">
+            {profileImage ? (
+              <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              (session?.user?.name?.[0] || session?.user?.email?.[0]?.toUpperCase())
+            )}
+          </div>
+          <CldUploadWidget 
+            signatureEndpoint="/api/sign-image"
+            onSuccess={handleUploadAvatar}
+            options={{ sources: ['local', 'camera', 'url'], cropping: true, multiple: false }}
+          >
+            {({ open }) => (
+              <button 
+                onClick={() => open()}
+                className="absolute bottom-0 right-0 bg-indigo-600 text-white p-2 rounded-full shadow hover:bg-indigo-700 transition"
+                title="เปลี่ยนรูปโปรไฟล์"
+              >
+                📷
+              </button>
+            )}
+          </CldUploadWidget>
+        </div>
+        <div className="text-center md:text-left">
+          <h1 className="text-3xl font-bold text-gray-800 mb-1">{session?.user?.name || "ไม่ระบุชื่อ"}</h1>
+          <p className="text-gray-500 mb-2">{session?.user?.email}</p>
+          <span className="inline-block px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold">
+            {(session?.user as any)?.role === "ADMIN" ? "ผู้ดูแลระบบ" : "นักศึกษา/บุคลากร"}
+          </span>
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <h2 className="text-xl font-bold text-gray-800">จัดการข้อมูลส่วนตัว</h2>
       </div>
 
       {/* Tabs */}

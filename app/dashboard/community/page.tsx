@@ -25,13 +25,13 @@ export default function CommunityPage() {
   const [editCommentContent, setEditCommentContent] = useState("");
 
   useEffect(() => {
-    if (status === "authenticated") fetchPosts();
+    if (status === "authenticated") fetchPosts(true);
   }, [status]);
 
-  const fetchPosts = async () => {
-    setLoading(true);
+  const fetchPosts = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     try {
-      const res = await fetch("/api/posts");
+      const res = await fetch("/api/posts", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setPosts(data);
@@ -39,7 +39,7 @@ export default function CommunityPage() {
     } catch (e) {
       console.error(e);
     }
-    setLoading(false);
+    if (showLoading) setLoading(false);
   };
 
   const handleCreatePost = async (e: React.FormEvent) => {
@@ -227,8 +227,12 @@ export default function CommunityPage() {
             <div key={post.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
               {/* Post Header */}
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 border border-indigo-200">
-                  {post.user?.name?.[0] || post.user?.email?.[0]?.toUpperCase()}
+                <div className="w-10 h-10 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 border border-indigo-200 overflow-hidden">
+                  {post.user?.image ? (
+                    <img src={post.user.image} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    post.user?.name?.[0] || post.user?.email?.[0]?.toUpperCase()
+                  )}
                 </div>
                 <div className="flex-1">
                   <h3 className="text-sm font-bold text-gray-800">{post.user?.name || post.user?.email}</h3>
@@ -285,8 +289,12 @@ export default function CommunityPage() {
                   <div className="space-y-3 mb-4 bg-gray-50 p-4 rounded-xl">
                     {post.comments.map((comment: any) => (
                       <div key={comment.id} className="flex gap-3">
-                        <div className="w-6 h-6 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 mt-1">
-                          {comment.user?.name?.[0] || comment.user?.email?.[0]?.toUpperCase()}
+                        <div className="w-6 h-6 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 mt-1 overflow-hidden">
+                          {comment.user?.image ? (
+                            <img src={comment.user.image} alt="Avatar" className="w-full h-full object-cover" />
+                          ) : (
+                            comment.user?.name?.[0] || comment.user?.email?.[0]?.toUpperCase()
+                          )}
                         </div>
                         <div className="flex-1">
                           {editingCommentId === comment.id ? (
